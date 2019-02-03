@@ -1,28 +1,16 @@
 const graphql = require('graphql');
 const _ = require('lodash');
+const Book = require('../models/book');
+const Author = require('../models/Author');
 const {
     GraphQLObjectType,
     GraphQLString,
     GraphQLSchema,
     GraphQLID,
     GraphQLInt,
-    GraphQLList
+    GraphQLList,
+    GraphQLNonNull
 } = graphql;
-
-var books = [
-    { name: 'Name of the Wind', genre: 'Fantasy', id: '1', authorId: '1' },
-    { name: 'The Final Empire', genre: 'Fantasy', id: '2', authorId: '2' },
-    { name: 'The Hero of Ages', genre: 'Fantasy', id: '4', authorId: '2' },
-    { name: 'The Long Earth', genre: 'Sci-Fi', id: '3', authorId: '3' },
-    { name: 'The Colour of Magic', genre: 'Fantasy', id: '5', authorId: '3' },
-    { name: 'The Light Fantastic', genre: 'Fantasy', id: '6', authorId: '3' },
-];
-
-var authors = [
-    { name: 'Patrick Rothfuss', age: 44, id: '1' },
-    { name: 'Brandon Sanderson', age: 42, id: '2' },
-    { name: 'Terry Pratchett', age: 66, id: '3' }
-];
 
 // We need to rap the field inside a function because
 // we don't execute the code till the whole code is read.
@@ -42,18 +30,19 @@ const BookType = new GraphQLObjectType({
             //In here we also have the (parent) object
             //
             type: AuthorType,
-            resolve(parent, args){
-               // console.log(parent);
+            resolve(parent, args) {
+                // console.log(parent);
                 // we need to find the author whose id
                 //property matches the parent ( book )
-                return _.find(authors, { id: parent.authorId });
+                // return _.find(authors, { id: parent.authorId });
+                return Author.findById(parent.authorId)
             }
         }
     })
 });
 const AuthorType = new GraphQLObjectType({
     name: 'Author',
-    fields: ( ) => ({
+    fields: () => ({
         id: { type: GraphQLID },
         name: { type: GraphQLString },
         age: { type: GraphQLInt },
@@ -61,10 +50,11 @@ const AuthorType = new GraphQLObjectType({
             // This is a bit different than the books type and the reason for that
             //Is because we might have more than one book for the same author
             type: new GraphQLList(BookType),
-            resolve(parent, args){
+            resolve(parent, args) {
                 //This time we used filter and not find
                 //because it will filter the correct books with the authorID that we specified
-                return _.filter(books, { authorId: parent.id });
+                //return _.filter(books, { authorId: parent.id });
+                return Book.find({ authorId: parent.id });
             }
         }
     })
@@ -83,35 +73,113 @@ const RootQuery = new GraphQLObjectType({
             args: { id: { type: GraphQLID } },
             resolve(parent, args) {
                 // code to get data from db / other source
-               // console.log(parent,args,books)
-               // console.log(typeof(args.id))
-
-                return _.find(books, { id: args.id });
+                // console.log(parent,args,books)
+                // console.log(typeof(args.id))
+                // return _.find(books, { id: args.id });
+                return Book.findById(args.id);
             }
         },
         author: {
             type: AuthorType,
             args: { id: { type: GraphQLID } },
-            resolve(parent, args){
-                return _.find(authors, { id: args.id });
+            resolve(parent, args) {
+                // return _.find(authors, { id: args.id });
+                return Author.findById(args.id);
             }
         },
         books: {
             type: new GraphQLList(BookType),
-            resolve(parent, args){
-                return books;
+            resolve(parent, args) {
+                // return books;
+                return Book.find({});
             }
         },
         authors: {
             type: new GraphQLList(AuthorType),
-            resolve(parent, args){
-                return authors;
+            resolve(parent, args) {
+                // return authors;
+                return Author.find({});
             }
         }
     }
 });
 
+const Mutation = new GraphQLObjectType({
+    name: 'Mutation',
+    fields: {
+        addAuthor: {
+            type: AuthorType,
+            args: {
+                name: { type: new GraphQLNonNull(GraphQLString) },
+                age: { type: new GraphQLNonNull(GraphQLInt) }
+            },
+            resolve(parent, args) {
+                // We are using the model Author that we have created using mongose
+                let author = new Author({
+                    name: args.name,
+                    age: args.age
+                });
+                // we can save the instance the we just created which is author
+                // monogoose will do the heavy work of saving it online
+                // we must return
+                return author.save();
+            }
+        },
+        addBook: {
+            type: BookType,
+            args: {
+                name: { type: new GraphQLNonNull(GraphQLString) },
+                genre: { type: new GraphQLNonNull(GraphQLString) },
+                authorId: { type: new GraphQLNonNull(GraphQLID) }
+            },
+            resolve(parent, args) {
+                let book = new Book({
+                    name: args.name,
+                    genre: args.genre,
+                    authorId: args.authorId
+                });
+                return book.save();
+            }
+        },
+        deleteAuthor: {
+            type: AuthorType,
+            args: {
+                id: { type: new GraphQLNonNull(GraphQLID) },
+
+            },
+            resolve(parent, args) {
+                // We are using the model Author that we have created using mongose
+                // we can save the instance the we just created which is author
+                // monogoose will do the heavy work of saving it online
+                // we must return
+                console.log(args.id)
+                return Author.deleteOne({ _id: args.id });
+            }
+        },
+        updateAuthor: {
+            type: AuthorType,
+            args: {
+                id: { type: new GraphQLNonNull(GraphQLID) },
+                name: { type: GraphQLString },
+                age: { type: GraphQLInt }
+            },
+            resolve(parent, args) {
+                // We are using the model Author that we have created using mongose
+                // we can save the instance the we just created which is author
+                // monogoose will do the heavy work of saving it online
+                // we must return
+                console.log(args.id)
+                return Author.findByIdAndUpdate(
+                    args.id,
+                   {name: args.name ,age:args.age}
+                  )
+            }
+        },
+    }
+});
+
 // we need to export this schema and pass the RootQuery that we defined
 module.exports = new GraphQLSchema({
-    query: RootQuery
+    query: RootQuery,
+    mutation: Mutation
 });
